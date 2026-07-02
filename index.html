@@ -1729,8 +1729,12 @@ function renderCaiDat(){
           <span style="font-size:12px;color:#888">Ch&#7885;n file .json &#273;&#227; xu&#7845;t &#273;&#7875; kh&#244;i ph&#7909;c d&#7919; li&#7879;u. <b>S&#7869; ghi &#273;&#232; d&#7919; li&#7879;u hi&#7879;n t&#7841;i.</b></span>
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid #E0F0E6;padding-top:12px">
-          <button class="btn-outline" style="border-color:#E57373;color:#C0392B" onclick="resetToSeed()">&#128260; Reset v&#7873; d&#7919; li&#7879;u Excel g&#7889;c</button>
-          <span style="font-size:12px;color:#888">X&#243;a to&#224;n b&#7897; v&#224; kh&#244;i ph&#7909;c t&#7915; file Excel g&#7889;c.</span>
+          <button class="btn btn-primary" style="background:#1565C0" onclick="pushLocalToFirebase()">☁️ Đẩy dữ liệu máy này lên Firebase</button>
+          <span style="font-size:12px;color:#888">Ghi đè Firebase bằng dữ liệu đang có trên máy này (localStorage). Dùng khi Firebase bị mất dữ liệu.</span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid #E0F0E6;padding-top:12px">
+          <button class="btn-outline" style="border-color:#E57373;color:#C0392B" onclick="resetToSeed()">&#128260; Reset về dữ liệu Excel gốc</button>
+          <span style="font-size:12px;color:#888">Xóa toàn bộ và khôi phục từ file Excel gốc.</span>
         </div>
       </div>
     </div>
@@ -1787,18 +1791,44 @@ function exportData(){
 
 function importData(input){
   const file=input.files[0]; if(!file) return;
-  if(!confirm('Nhap du lieu tu file JSON?\nToan bo du lieu hien tai se bi ghi de.')) { input.value=''; return; }
+  if(!confirm('Nhập dữ liệu từ file JSON?\nToàn bộ dữ liệu hiện tại sẽ bị ghi đè.')) { input.value=''; return; }
   const reader=new FileReader();
   reader.onload=e=>{
     try{
       const parsed=JSON.parse(e.target.result);
-      if(!parsed.data||!parsed.years) throw new Error('File khong dung dinh dang');
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(parsed));
-      alert('Nhap du lieu thanh cong! Trang se tai lai.');
-      location.reload();
-    }catch(err){ alert('Loi doc file: '+err.message); }
+      if(!parsed.data||!parsed.years) throw new Error('File không đúng định dạng');
+      db=parsed;
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+      if(fbDB && !READONLY){
+        fbDB.ref('appdata').set(db).then(()=>{
+          alert('Nhập dữ liệu thành công và đã đồng bộ lên Firebase! Trang sẽ tải lại.');
+          location.reload();
+        }).catch(e=>{
+          alert('Đã lưu cục bộ nhưng lỗi Firebase: '+e.message+'\nTrang sẽ tải lại.');
+          location.reload();
+        });
+      } else {
+        alert('Nhập dữ liệu thành công! Trang sẽ tải lại.');
+        location.reload();
+      }
+    }catch(err){ alert('Lỗi đọc file: '+err.message); }
   };
   reader.readAsText(file);
+}
+
+function pushLocalToFirebase(){
+  if(!fbDB){ alert('Chưa kết nối Firebase.'); return; }
+  if(!confirm('Đẩy dữ liệu trên máy này lên Firebase?\nDữ liệu trên Firebase sẽ bị ghi đè.')) return;
+  const local = localStorage.getItem(STORAGE_KEY);
+  if(!local){ alert('Không có dữ liệu cục bộ.'); return; }
+  try{
+    const parsed = JSON.parse(local);
+    fbDB.ref('appdata').set(parsed).then(()=>{
+      db = parsed;
+      alert('Đã đẩy dữ liệu lên Firebase thành công! Trang sẽ tải lại.');
+      location.reload();
+    }).catch(e=>alert('Lỗi: '+e.message));
+  }catch(e){ alert('Lỗi đọc dữ liệu cục bộ: '+e.message); }
 }
 
 function resetToSeed(){
