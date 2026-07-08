@@ -36,7 +36,7 @@ nav a.active{background:rgba(255,255,255,.18);color:#fff;border-left-color:#A8D5
 /* ── Page panels ── */
 .pg{display:none;flex:1;flex-direction:column;overflow:hidden}
 .pg.active{display:flex}
-.pg-scroll{flex:1;overflow-y:auto;padding:20px}
+.pg-scroll{flex:1;overflow-y:auto;overflow-x:auto;padding:20px}
 
 /* ─────────────────────────────────────────────
    TRANSACTION TABLE (giống ThuChi_CaNhan)
@@ -256,12 +256,12 @@ tr.bal-row.closing .td-bal{color:#1F5C3A}
 .tg-table th:nth-child(4),.tg-table th:nth-child(8),.tg-table th:nth-child(9),.tg-table th:nth-child(10){text-align:right}
 
 /* ── Khoản vay table ── */
-.kv-table-wrap{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.07);overflow-x:auto;margin-top:4px}
-.kv-report-table{width:100%;border-collapse:collapse;font-size:13px;min-width:1000px}
-.kv-report-table th{background:#2D6A4F;color:#fff;padding:9px 12px;font-weight:600;font-size:11px;text-align:right;white-space:nowrap}
-.kv-report-table th:first-child{text-align:left;min-width:160px;width:160px}
-.kv-report-table td{padding:8px 12px;border-bottom:1px solid #f0f0f0;text-align:right;white-space:nowrap}
-.kv-report-table td:first-child{text-align:left;font-weight:600;color:#2d3748;background:#fafff9}
+.kv-table-wrap{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-top:4px}
+.kv-report-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.kv-report-table th{background:#2D6A4F;color:#fff;padding:7px 4px;font-weight:600;font-size:11px;text-align:center;white-space:nowrap}
+.kv-report-table th:first-child{text-align:left;width:110px}
+.kv-report-table td{padding:7px 4px;border-bottom:1px solid #f0f0f0;text-align:right;white-space:nowrap;font-size:11.5px}
+.kv-report-table td:first-child{text-align:left;font-weight:600;color:#2d3748;background:#fafff9;padding-left:8px}
 .kv-report-table tr:last-child td{border-bottom:none}
 .kv-report-table .row-goc td{color:#1a202c}
 .kv-report-table .row-tra-goc td{color:#2b6cb0}
@@ -1240,7 +1240,7 @@ function renderKhoanVay(){
   const gocCells=gocVayPerMonth.map((v,i)=>{
     const m=i+1;
     const isManual=kvs.some(kv=>kv.snapshots&&kv.snapshots[`${Y}-${m}`]!=null);
-    return `<td><input class="kv-snap-inp" value="${v?fmtNum(v):''}" placeholder="-"
+    return `<td><input class="kv-snap-inp" style="width:100%;box-sizing:border-box;text-align:right;font-size:11.5px;padding:2px 3px" value="${v?fmtNum(v):''}" placeholder="-"
       style="color:${isManual?'#1a202c':'#555'}"
       onchange="saveFirstKVSnap(${m},this.value)"
       onfocus="this.select()"></td>`;
