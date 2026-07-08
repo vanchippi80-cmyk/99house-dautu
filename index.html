@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>99house - Đầu tư</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -332,7 +332,10 @@ tr.bal-row.closing .td-bal{color:#1F5C3A}
 <div id="main">
   <div id="topbar">
     <h1 id="page-title">Báo cáo tổng hợp</h1>
-    <div id="topbar-actions"></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="sync-badge" style="display:none;font-size:12px;font-weight:600;align-items:center;gap:6px"></div>
+      <div id="topbar-actions"></div>
+    </div>
   </div>
   <div id="content">
 
@@ -547,11 +550,11 @@ const FB_CONFIG = {
   appId: "1:662724104984:web:8d43654087a53c6335c46d",
   databaseURL: "https://housedautu-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
-let fbApp=null, fbDB=null;
+let fbApp=null, fsDB=null;
 function initFirebase(){
   try{
     fbApp=firebase.initializeApp(FB_CONFIG);
-    fbDB=firebase.database();
+    fsDB=firebase.firestore();
     console.log('Firebase connected ✓');
     return true;
   } catch(e){ console.warn('Firebase init error:',e.message); return false; }
@@ -589,12 +592,58 @@ function loadDB(){
   if(seed){ seed._seedVersion=SEED_VERSION; localStorage.setItem(STORAGE_KEY,JSON.stringify(seed)); return seed; }
   return defaultDB();
 }
+let _syncPending=false, _syncTimer=null;
+
 function saveDB(){
+  db._lastModified = Date.now();
   localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
-  if(fbDB && !READONLY){
-    fbDB.ref('appdata').set(db).catch(e=>console.warn('FB sync error:',e.message));
+  if(fsDB && !READONLY){
+    clearTimeout(_syncTimer);
+    _syncPending=true;
+    setSyncBadge('saving');
+    _doSync(0);
   }
 }
+
+function _doSync(attempt){
+  const clean=JSON.parse(JSON.stringify(db));
+  fsDB.collection('appdata').doc('main').set(clean).then(()=>{
+    _syncPending=false;
+    setSyncBadge('ok');
+  }).catch(e=>{
+    console.warn('Firestore attempt '+(attempt+1)+': '+e.message);
+    if(attempt<2){
+      _syncTimer=setTimeout(()=>_doSync(attempt+1), 3000*(attempt+1));
+      setSyncBadge('retry',attempt+1);
+    } else {
+      _syncPending=true;
+      setSyncBadge('error');
+      // Backup: keep in localStorage — user will NOT lose data
+      console.error('Firestore save failed after 3 attempts. Data preserved in localStorage.');
+    }
+  });
+}
+
+function setSyncBadge(state, n){
+  const el=document.getElementById('sync-badge'); if(!el) return;
+  el.style.display='flex';
+  if(state==='saving'){
+    el.style.color='rgba(255,255,255,.6)'; el.innerHTML='⏳ Đang lưu...';
+  } else if(state==='ok'){
+    el.style.color='#A5D6A7'; el.innerHTML='✓ Đã lưu';
+    setTimeout(()=>{ el.style.display='none'; },3000);
+  } else if(state==='retry'){
+    el.style.color='#FFD54F'; el.innerHTML='⟳ Thử lại ('+n+'/3)...';
+  } else if(state==='error'){
+    el.style.color='#EF9A9A';
+    el.innerHTML='⚠️ Lỗi Firebase — dữ liệu giữ ở máy này <button onclick="_doSync(0)" style="background:rgba(255,255,255,.25);border:none;color:#fff;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;margin-left:6px">Thử lại</button>';
+  }
+}
+
+// Cảnh báo nếu thoát khi chưa sync
+window.addEventListener('beforeunload',e=>{
+  if(_syncPending){ e.preventDefault(); return e.returnValue='Dữ liệu chưa đồng bộ lên Firebase. Đóng tab sẽ mất thay đổi!'; }
+});
 function defaultDB(){
   return { years:[2026], openingBalances:{'2026':{bank:0,cash:0,tienGui:0}},
            data:{'2026':emptyYear()}, tienGui:[], khoanVay:[], batDongSan:[] };
@@ -766,7 +815,7 @@ function selectTxMonth(ch,m){
 }
 
 function renderRows(ch){
-  const rows=mdata(Y,txMonth[ch],ch);
+  const rows=[...mdata(Y,txMonth[ch],ch)].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const tbody=document.getElementById(ch+'-body'); if(!tbody) return;
   const m=txMonth[ch];
   const opening=ch==='bank'?openingBank(Y,m):openingCash(Y,m);
@@ -1755,28 +1804,28 @@ function renderCaiDat(){
     </div>
 
   </div>`;
-  if(userRole==='admin' && fbDB) setTimeout(loadUserList,100);
+  if(userRole==='admin' && fsDB) setTimeout(loadUserList,100);
 }
 
 function saveViewerPW(){
   const pw=document.getElementById('viewer-pw').value.trim();
   CFG.viewerPassword=pw;
   saveSettings();
-  if(fbDB) fbDB.ref('config/password').set(pw).then(()=>alert('Đã lưu mật khẩu!')).catch(e=>alert('Lỗi: '+e.message));
+  if(fsDB) fsDB.collection('config').doc('app').set({password:pw},{merge:true}).then(()=>alert('Đã lưu mật khẩu!')).catch(e=>alert('Lỗi: '+e.message));
   else alert('Firebase chưa kết nối.');
 }
 
 function syncToFirebase(){
   const btn=document.getElementById('sync-btn');
   const st=document.getElementById('sync-status');
-  if(!fbDB){ alert('Firebase chưa kết nối. Kiểm tra kết nối mạng.'); return; }
+  if(!fsDB){ alert('Firestore chưa kết nối. Kiểm tra kết nối mạng.'); return; }
   btn.disabled=true; btn.textContent='Đang đồng bộ…';
   st.style.display='none';
-  fbDB.ref('appdata').set(db).then(()=>{
+  fsDB.collection('appdata').doc('main').set(db).then(()=>{
     st.style.display='block';
-    btn.disabled=false; btn.textContent='☁️ Đồng bộ lên Firebase ngay';
+    btn.disabled=false; btn.textContent='☁️ Đồng bộ lên Firestore ngay';
     setTimeout(()=>st.style.display='none',3000);
-  }).catch(e=>{ alert('Lỗi đồng bộ: '+e.message); btn.disabled=false; btn.textContent='☁️ Đồng bộ lên Firebase ngay'; });
+  }).catch(e=>{ alert('Lỗi đồng bộ: '+e.message); btn.disabled=false; btn.textContent='☁️ Đồng bộ lên Firestore ngay'; });
 }
 
 function exportData(){
@@ -1797,16 +1846,20 @@ function importData(input){
     try{
       const parsed=JSON.parse(e.target.result);
       if(!parsed.data||!parsed.years) throw new Error('File không đúng định dạng');
-      db=parsed;
+      // Thống kê dữ liệu sắp import
+      let txCount=0;
+      Object.values(parsed.data||{}).forEach(yr=>Object.values(yr).forEach(mo=>{txCount+=(mo.bank||[]).length+(mo.cash||[]).length;}));
+      const tgCount=(parsed.tienGui||[]).length;
+      const kvCount=(parsed.khoanVay||[]).length;
+      if(!confirm(`Xác nhận nhập:\n• ${txCount} giao dịch\n• ${tgCount} tiền gửi\n• ${kvCount} khoản vay\n\nToàn bộ dữ liệu hiện tại trên Firebase sẽ bị ghi đè.`)){input.value='';return;}
+      // Clean + add timestamp
+      parsed._lastModified=Date.now();
+      const clean=JSON.parse(JSON.stringify(parsed));
+      db=clean;
       localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
-      if(fbDB && !READONLY){
-        fbDB.ref('appdata').set(db).then(()=>{
-          alert('Nhập dữ liệu thành công và đã đồng bộ lên Firebase! Trang sẽ tải lại.');
-          location.reload();
-        }).catch(e=>{
-          alert('Đã lưu cục bộ nhưng lỗi Firebase: '+e.message+'\nTrang sẽ tải lại.');
-          location.reload();
-        });
+      if(fsDB && !READONLY){
+        setSyncBadge('saving');
+        _importToFirestore(clean, 0);
       } else {
         alert('Nhập dữ liệu thành công! Trang sẽ tải lại.');
         location.reload();
@@ -1816,14 +1869,30 @@ function importData(input){
   reader.readAsText(file);
 }
 
+function _importToFirestore(clean, attempt){
+  fsDB.collection('appdata').doc('main').set(clean).then(()=>{
+    setSyncBadge('ok');
+    alert('✅ Nhập thành công!\n• Dữ liệu đã lên Firebase.\nTrang sẽ tải lại.');
+    location.reload();
+  }).catch(e=>{
+    if(attempt<2){
+      setSyncBadge('retry', attempt+1);
+      setTimeout(()=>_importToFirestore(clean, attempt+1), 3000);
+    } else {
+      alert('⚠️ Đã lưu cục bộ nhưng KHÔNG lên được Firebase sau 3 lần thử.\nLỗi: '+e.message+'\n\nDữ liệu vẫn được giữ ở máy này. Hãy thử lại sau.');
+      location.reload();
+    }
+  });
+}
+
 function pushLocalToFirebase(){
-  if(!fbDB){ alert('Chưa kết nối Firebase.'); return; }
+  if(!fsDB){ alert('Chưa kết nối Firestore.'); return; }
   if(!confirm('Đẩy dữ liệu trên máy này lên Firebase?\nDữ liệu trên Firebase sẽ bị ghi đè.')) return;
   const local = localStorage.getItem(STORAGE_KEY);
   if(!local){ alert('Không có dữ liệu cục bộ.'); return; }
   try{
     const parsed = JSON.parse(local);
-    fbDB.ref('appdata').set(parsed).then(()=>{
+    fsDB.collection('appdata').doc('main').set(parsed).then(()=>{
       db = parsed;
       alert('Đã đẩy dữ liệu lên Firebase thành công! Trang sẽ tải lại.');
       location.reload();
@@ -1953,8 +2022,8 @@ function loadUserRole(user){
     userRole='admin'; startApp(); return;
   }
   // Check Firebase roles
-  fbDB.ref('roles/'+emailKey(user.email)).once('value').then(snap=>{
-    const role=snap.val();
+  fsDB.collection('roles').doc(emailKey(user.email)).get().then(doc=>{
+    const role=doc.exists?doc.data().role:null;
     if(role){ userRole=role; startApp(); }
     else showPendingScreen(user);
   }).catch(()=>{ userRole='viewer'; startApp(); });
@@ -1976,14 +2045,22 @@ function showPendingScreen(user){
 function startApp(){
   hideLoginScreen();
   // Load data from Firebase (then fallback to localStorage)
-  fbDB.ref('appdata').once('value').then(snap=>{
-    const remote=snap.val();
-    if(remote){
+  fsDB.collection('appdata').doc('main').get().then(doc=>{
+    const remote=doc.exists?doc.data():null;
+    const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');
+    const remoteTime=remote?._lastModified||0;
+    const localTime=local?._lastModified||0;
+    if(remote && remoteTime>=localTime){
       db=remote;
       localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+    } else if(local){
+      db=local;
+      if(userRole==='admin'){
+        const clean=JSON.parse(JSON.stringify(db));
+        fsDB.collection('appdata').doc('main').set(clean).catch(e=>console.warn(e));
+      }
     } else if(userRole==='admin'){
-      // First time: push local data up
-      saveDB();
+      saveDB(); // Lần đầu: đẩy dữ liệu local lên Firestore
     }
     // Load CFG from db.settings
     if(db.settings){
@@ -2001,14 +2078,14 @@ function startApp(){
     if(userRole==='editor'){ document.body.classList.add('editor-mode'); }
     // Real-time sync for viewers/editors
     if(userRole!=='admin'){
-      fbDB.ref('appdata').on('value',s=>{ const d=s.val(); if(d){db=d;if(db.settings){CFG.catsThu=db.settings.catsThu||CFG_DEFAULT.catsThu;CFG.catsChi=db.settings.catsChi||CFG_DEFAULT.catsChi;CFG.projects=db.settings.projects||CFG_DEFAULT.projects;CFG.partners=db.settings.partners||CFG_DEFAULT.partners;}initYears();renderPage(page||'rptGopVon');} });
+      fsDB.collection('appdata').doc('main').onSnapshot(doc=>{ const d=doc.exists?doc.data():null; if(d){db=d;if(db.settings){CFG.catsThu=db.settings.catsThu||CFG_DEFAULT.catsThu;CFG.catsChi=db.settings.catsChi||CFG_DEFAULT.catsChi;CFG.projects=db.settings.projects||CFG_DEFAULT.projects;CFG.partners=db.settings.partners||CFG_DEFAULT.partners;}initYears();renderPage(page||'rptGopVon');} });
     }
     go('rptGopVon');
   }).catch(e=>{ alert('Lỗi tải dữ liệu: '+e.message); });
 }
 
 function initAuth(){
-  if(!fbDB){ go('rptGopVon'); return; } // Firebase not init
+  if(!fsDB){ go('rptGopVon'); return; } // Firestore not init
   showLoginScreen();
   firebase.auth().onAuthStateChanged(user=>{
     if(user){ loadUserRole(user); }
@@ -2018,12 +2095,12 @@ function initAuth(){
 
 // ── User management (admin only) ──
 function loadUserList(){
-  if(!fbDB) return;
-  fbDB.ref('roles').once('value').then(snap=>{
-    const roles=snap.val()||{};
+  if(!fsDB) return;
+  fsDB.collection('roles').get().then(snap=>{
     const el=document.getElementById('user-list');
     if(!el) return;
-    const rows=Object.entries(roles).map(([k,r])=>{
+    const rows=snap.docs.map(doc=>{
+      const k=doc.id, r=doc.data().role||'viewer';
       const email=k.replace(/_dot_/g,'.').replace('_at_','@');
       const opts=['admin','editor','viewer'].map(ro=>`<option value="${ro}"${ro===r?' selected':''}>${ro}</option>`).join('');
       return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #eee">
@@ -2037,19 +2114,19 @@ function loadUserList(){
 }
 
 function setUserRole(key,role){
-  fbDB.ref('roles/'+key).set(role).then(()=>loadUserList()).catch(e=>alert('Lỗi: '+e.message));
+  fsDB.collection('roles').doc(key).set({role:role}).then(()=>loadUserList()).catch(e=>alert('Lỗi: '+e.message));
 }
 
 function removeUser(key){
   if(!confirm('Xoá người dùng này?')) return;
-  fbDB.ref('roles/'+key).remove().then(()=>loadUserList()).catch(e=>alert('Lỗi: '+e.message));
+  fsDB.collection('roles').doc(key).delete().then(()=>loadUserList()).catch(e=>alert('Lỗi: '+e.message));
 }
 
 function addUser(){
   const email=(document.getElementById('new-user-email').value||'').trim().toLowerCase();
   const role=document.getElementById('new-user-role').value;
   if(!email||!email.includes('@')){ alert('Email không hợp lệ'); return; }
-  fbDB.ref('roles/'+emailKey(email)).set(role).then(()=>{
+  fsDB.collection('roles').doc(emailKey(email)).set({role:role}).then(()=>{
     document.getElementById('new-user-email').value='';
     loadUserList();
   }).catch(e=>alert('Lỗi: '+e.message));
@@ -2069,19 +2146,19 @@ function publishApp(){
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Quản Lý Đầu Tư — Chế độ xem</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"><\/script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"><\/script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"><\/script>
 <script>
 const FB_CFG=${JSON.stringify(FB_CONFIG)};
 const FB_APP=firebase.initializeApp(FB_CFG);
-const FB_DB=firebase.database();
+const FS_DB=firebase.firestore();
 const VIEWER_PW=${JSON.stringify(pw)};
 function checkPW(){
   const entered=document.getElementById('pw-inp').value.trim();
   if(VIEWER_PW && entered!==VIEWER_PW){
     document.getElementById('pw-err').style.display='block'; return;
   }
-  FB_DB.ref('appdata').once('value').then(snap=>{
-    const d=snap.val();
+  FS_DB.collection('appdata').doc('main').get().then(doc=>{
+    const d=doc.exists?doc.data():null;
     document.getElementById('gate').style.display='none';
     document.getElementById('data-area').style.display='block';
     renderData(d);
