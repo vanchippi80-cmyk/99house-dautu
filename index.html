@@ -848,7 +848,7 @@ function renderRows(ch){
     allRows.forEach((r,i)=>{
       const amt=r.amount||0; const isThu=r.type==='Thu';
       runBal+=isThu?amt:-amt;
-      const tr=document.createElement('tr'); tr.dataset.id=r.id;
+      const tr=document.createElement('tr'); tr.dataset.id=r.id; tr.dataset.cat=r.category||''; tr.dataset.thu=(isThu?amt:0); tr.dataset.chi=(isThu?0:amt);
       tr.innerHTML=`
         <td class="td-stt">${i+1}</td>
         <td style="padding:5px 6px;font-size:12px;white-space:nowrap;color:#555">${r.date?r.date.split('-').reverse().join('/'):''}</td>
@@ -1052,7 +1052,14 @@ function populateFilterSel(ch){
   const sel=document.getElementById('filter-sel-'+ch); if(!sel) return;
   const cur=sel.value;
   sel.innerHTML='<option value="">— Tất cả —</option>';
-  const cats=[...new Set(mdata(Y,txMonth[ch],ch).map(r=>r.category).filter(Boolean))].sort();
+  let srcRows;
+  if(txMonth[ch]===0){
+    srcRows=[];
+    for(let mo=1;mo<=12;mo++) mdata(Y,mo,ch).forEach(r=>srcRows.push(r));
+  } else {
+    srcRows=mdata(Y,txMonth[ch],ch);
+  }
+  const cats=[...new Set(srcRows.map(r=>r.category).filter(Boolean))].sort();
   cats.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; if(c===cur) o.selected=true; sel.appendChild(o); });
   if(cur) filterCat(ch,sel.value);
 }
@@ -1061,11 +1068,36 @@ function filterCat(ch,val){
   const tbody=document.getElementById(ch+'-body'); if(!tbody) return;
   let shown=0,total=0,sumThu=0,sumChi=0;
   tbody.querySelectorAll('tr[data-id]').forEach(tr=>{
-    const cat=tr.querySelector('.r-cat')?.value||'';
+    const rCatEl=tr.querySelector('.r-cat');
+    const cat=rCatEl?rCatEl.value:(tr.dataset.cat||'');
     const match=!val||cat===val;
     tr.classList.toggle('filter-hidden',!match);
-    if(match){ shown++; sumThu+=parseAmt(tr.querySelector('.amt-thu')?.value)||0; sumChi+=parseAmt(tr.querySelector('.amt-chi')?.value)||0; } total++;
+    if(match){
+      shown++;
+      const thuEl=tr.querySelector('.amt-thu'); const chiEl=tr.querySelector('.amt-chi');
+      sumThu+=thuEl?(parseAmt(thuEl.value)||0):parseFloat(tr.dataset.thu||0);
+      sumChi+=chiEl?(parseAmt(chiEl.value)||0):parseFloat(tr.dataset.chi||0);
+    }
+    total++;
   });
+  // Cập nhật closing row khi year view
+  if(txMonth[ch]===0){
+    const closeRow=tbody.querySelector('.bal-row.closing');
+    if(closeRow){
+      const tds=closeRow.querySelectorAll('td');
+      if(val){
+        tds[6].textContent=sumThu?fmtNum(sumThu):''; tds[6].style.color='#276749';
+        tds[7].textContent=sumChi?fmtNum(sumChi):''; tds[7].style.color='#C0392B';
+        tds[1].textContent=`Lọc: ${shown}/${total} giao dịch`;
+      } else {
+        let totThu=0,totChi=0;
+        tbody.querySelectorAll('tr[data-id]').forEach(r=>{totThu+=parseFloat(r.dataset.thu||0);totChi+=parseFloat(r.dataset.chi||0);});
+        tds[6].textContent=fmtNum(totThu); tds[6].style.color='#276749';
+        tds[7].textContent=fmtNum(totChi); tds[7].style.color='#C0392B';
+        tds[1].textContent=`Số dư cuối năm ${Y}`;
+      }
+    }
+  }
   const ce=document.getElementById('filter-count-'+ch);
   if(ce){ if(val){
     ce.innerHTML=`<span style="margin-right:8px">${shown}/${total} giao dịch</span>`
