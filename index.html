@@ -873,7 +873,8 @@ function renderRows(ch){
     tbody.appendChild(closeTr);
     const lbl=ch==='bank'?'🏦 Bank':'💵 Tiền mặt';
     document.getElementById(ch+'-title').textContent=`${lbl} – Cả năm ${Y}`;
-    populateFilterSel(ch, allRows); renderStatCards(ch,allRows,opening,runBal);
+    renderStatCards(ch,allRows,opening,runBal);
+    setTimeout(()=>populateFilterSel(ch,allRows),50);
     return;
   }
 
@@ -1107,14 +1108,14 @@ function filterCat(ch,val){
     if(closeRow){
       const tds=closeRow.querySelectorAll('td');
       if(val){
-        tds[6].textContent=sumThu?fmtNum(sumThu):''; tds[6].style.color='#276749';
-        tds[7].textContent=sumChi?fmtNum(sumChi):''; tds[7].style.color='#C0392B';
+        tds[2].textContent=sumThu?fmtNum(sumThu):''; tds[2].style.color='#276749';
+        tds[3].textContent=sumChi?fmtNum(sumChi):''; tds[3].style.color='#C0392B';
         tds[1].textContent=`Lọc: ${shown}/${total} giao dịch`;
       } else {
         let totThu=0,totChi=0;
         tbody.querySelectorAll('tr[data-id]').forEach(r=>{totThu+=parseFloat(r.dataset.thu||0);totChi+=parseFloat(r.dataset.chi||0);});
-        tds[6].textContent=fmtNum(totThu); tds[6].style.color='#276749';
-        tds[7].textContent=fmtNum(totChi); tds[7].style.color='#C0392B';
+        tds[2].textContent=fmtNum(totThu); tds[2].style.color='#276749';
+        tds[3].textContent=fmtNum(totChi); tds[3].style.color='#C0392B';
         tds[1].textContent=`Số dư cuối năm ${Y}`;
       }
     }
