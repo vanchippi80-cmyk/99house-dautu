@@ -1050,18 +1050,37 @@ function recalcBalance(ch){
 
 function populateFilterSel(ch, srcRows){
   const sel=document.getElementById('filter-sel-'+ch); if(!sel) return;
-  // Nếu không truyền srcRows thì tự lấy theo tháng hiện tại
-  if(!srcRows){
-    if(txMonth[ch]===0){
-      srcRows=[];
-      for(let mo=1;mo<=12;mo++) mdata(Y,mo,ch).forEach(r=>srcRows.push(r));
-    } else {
-      srcRows=mdata(Y,txMonth[ch],ch);
-    }
+
+  // Bước 1: lấy cats từ srcRows nếu có
+  let cats=[];
+  if(srcRows && srcRows.length>0){
+    cats=[...new Set(srcRows.map(r=>r.category).filter(Boolean))].sort();
   }
+
+  // Bước 2: nếu vẫn rỗng, thử gom từ db
+  if(cats.length===0){
+    const src2=[];
+    if(txMonth[ch]===0){
+      for(let mo=1;mo<=12;mo++) mdata(Y,mo,ch).forEach(r=>src2.push(r));
+    } else {
+      mdata(Y,txMonth[ch],ch).forEach(r=>src2.push(r));
+    }
+    cats=[...new Set(src2.map(r=>r.category).filter(Boolean))].sort();
+  }
+
+  // Bước 3 (fallback): đọc thẳng data-cat từ DOM rows đang hiển thị
+  if(cats.length===0){
+    const tbody=document.getElementById(ch+'-body');
+    const domCats=new Set();
+    tbody?.querySelectorAll('tr[data-id]').forEach(tr=>{
+      const cat=tr.dataset.cat||tr.querySelector('.r-cat')?.value||'';
+      if(cat) domCats.add(cat);
+    });
+    cats=[...domCats].sort();
+  }
+
   const cur=sel.value;
   sel.innerHTML='<option value="">— Tất cả —</option>';
-  const cats=[...new Set(srcRows.map(r=>r.category).filter(Boolean))].sort();
   cats.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; if(c===cur) o.selected=true; sel.appendChild(o); });
   if(cur) filterCat(ch,sel.value);
 }
