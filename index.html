@@ -873,7 +873,7 @@ function renderRows(ch){
     tbody.appendChild(closeTr);
     const lbl=ch==='bank'?'🏦 Bank':'💵 Tiền mặt';
     document.getElementById(ch+'-title').textContent=`${lbl} – Cả năm ${Y}`;
-    populateFilterSel(ch); renderStatCards(ch,allRows,opening,runBal);
+    populateFilterSel(ch, allRows); renderStatCards(ch,allRows,opening,runBal);
     return;
   }
 
@@ -930,7 +930,7 @@ function renderRows(ch){
 
   // Update title
   document.getElementById(ch+'-title').textContent=(ch==='bank'?'🏦 Bank':'💵 Tiền mặt')+` – Tháng ${m}/${Y}`;
-  populateFilterSel(ch);
+  populateFilterSel(ch, rows);
   renderStatCards(ch, rows, opening, runBal);
 }
 
@@ -1048,17 +1048,19 @@ function recalcBalance(ch){
   }
 }
 
-function populateFilterSel(ch){
+function populateFilterSel(ch, srcRows){
   const sel=document.getElementById('filter-sel-'+ch); if(!sel) return;
+  // Nếu không truyền srcRows thì tự lấy theo tháng hiện tại
+  if(!srcRows){
+    if(txMonth[ch]===0){
+      srcRows=[];
+      for(let mo=1;mo<=12;mo++) mdata(Y,mo,ch).forEach(r=>srcRows.push(r));
+    } else {
+      srcRows=mdata(Y,txMonth[ch],ch);
+    }
+  }
   const cur=sel.value;
   sel.innerHTML='<option value="">— Tất cả —</option>';
-  let srcRows;
-  if(txMonth[ch]===0){
-    srcRows=[];
-    for(let mo=1;mo<=12;mo++) mdata(Y,mo,ch).forEach(r=>srcRows.push(r));
-  } else {
-    srcRows=mdata(Y,txMonth[ch],ch);
-  }
   const cats=[...new Set(srcRows.map(r=>r.category).filter(Boolean))].sort();
   cats.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; if(c===cur) o.selected=true; sel.appendChild(o); });
   if(cur) filterCat(ch,sel.value);
