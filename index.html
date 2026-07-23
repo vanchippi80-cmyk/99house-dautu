@@ -218,6 +218,9 @@ tr.bal-row.closing .td-bal{color:#1F5C3A}
 .group-row input[type=checkbox]{width:15px;height:15px;accent-color:#2D6A4F;cursor:pointer}
 .group-row label{cursor:pointer;flex:1}
 
+.rpy-label{position:sticky;left:0;z-index:1;padding:6px 14px;white-space:nowrap}
+table td,table th{border-bottom:1px solid #f0f0f0}
+
 /* ── Misc ── */
 .empty{text-align:center;padding:44px;color:#a0aec0;font-size:13px;line-height:1.7}
 .section-hdr{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #e2e8f0;background:#fff;flex-shrink:0}
@@ -312,6 +315,7 @@ tr.bal-row.closing .td-bal{color:#1F5C3A}
   <div class="logo">📈 Quản Lý Đầu Tư<span id="app-year-tag">2026</span></div>
   <nav>
     <div class="sec-label">Báo cáo</div>
+    <a onclick="go('rptYear')" id="nav-rptYear">📊 Tổng hợp</a>
     <a onclick="go('rptGopVon')" id="nav-rptGopVon">👥 Góp vốn</a>
     <a onclick="go('bds')" id="nav-bds">🏠 Bất động sản</a>
     <a onclick="go('tienGui')" id="nav-tienGui">💰 Tiền gửi</a>
@@ -408,6 +412,7 @@ tr.bal-row.closing .td-bal{color:#1F5C3A}
     </div>
 
     <!-- ═══ OTHER PAGES ═══ -->
+    <div class="pg" id="pg-rptYear"><div class="pg-scroll" id="rptYear-wrap"></div></div>
     <div class="pg" id="pg-rptGopVon"><div class="pg-scroll" id="rpt-gv-wrap"></div></div>
     <div class="pg" id="pg-tienGui"><div class="pg-scroll" id="tg-wrap"></div></div>
     <div class="pg" id="pg-khoanVay"><div class="pg-scroll" id="kv-wrap"></div></div>
@@ -1141,6 +1146,118 @@ function clearFilter(ch){
 // ═══════════════════════════════════════════════════
 // RENDER: GÓP VỐN
 // ═══════════════════════════════════════════════════
+function renderRptYear(){
+  const wrap=document.getElementById('rptYear-wrap'); if(!wrap) return;
+  const months=[1,2,3,4,5,6,7,8,9,10,11,12];
+  const thuCats=CFG.catsThu||[];
+  const chiCats=CFG.catsChi||[];
+
+  // Build per-month data
+  const data={};
+  months.forEach(m=>{
+    const ob_bank=openingBank(Y,m), ob_cash=openingCash(Y,m), ob_tg=openingTG(Y,m);
+    const cb_bank=closingBank(Y,m), cb_cash=closingCash(Y,m), cb_tg=getTGBalance(Y,m);
+    const thu={}, chi={};
+    thuCats.forEach(cat=>{ const {thu:t,chi:c}=catTotal(Y,m,cat); thu[cat]=t-c; });
+    chiCats.forEach(cat=>{ const {thu:t,chi:c}=catTotal(Y,m,cat); chi[cat]=c-t; });
+    data[m]={
+      opening: ob_bank+ob_cash+ob_tg,
+      closing: cb_bank+cb_cash+cb_tg,
+      cash: cb_cash, bank: cb_bank, tg: cb_tg,
+      thu, chi
+    };
+  });
+
+  // Total THU / CHI per month (loại offset categories khỏi THU header)
+  function totalThu(m){ return thuCats.filter(c=>!chiCats.includes(c)).reduce((s,c)=>s+(data[m].thu[c]||0),0); }
+  function totalChi(m){ return chiCats.reduce((s,c)=>s+(data[m].chi[c]||0),0); }
+
+  // Color helpers
+  function thuColor(v){ return v>0?'#276749':v<0?'#C0392B':''; }
+  function chiColor(v){ return v>0?'#C0392B':v<0?'#276749':''; }
+
+  // Build table HTML
+  const thCols=months.map(m=>`<th style="text-align:right;padding:7px 8px;white-space:nowrap;font-weight:600;background:#2D6A4F;color:#fff;font-size:12px">T${m}</th>`).join('');
+
+  let rows='';
+
+  // Số dư đầu kỳ
+  rows+=`<tr style="background:#fffbeb">
+    <td class="rpy-label" style="font-weight:700;color:#744210">Số dư đầu kỳ</td>
+    ${months.map(m=>`<td style="text-align:right;padding:5px 8px;font-weight:600;color:#744210">${data[m].opening?n(data[m].opening):''}</td>`).join('')}
+  </tr>`;
+
+  // THU header
+  rows+=`<tr style="background:#276749;color:#fff;font-weight:700">
+    <td class="rpy-label" style="background:#276749;color:#fff;font-weight:700;font-size:13px">THU</td>
+    ${months.map(m=>`<td style="text-align:right;padding:5px 8px;font-weight:700">${totalThu(m)?n(totalThu(m)):''}</td>`).join('')}
+  </tr>`;
+
+  // THU categories (bỏ qua "chuyển nguồn" vì sẽ offset ở phần CHI)
+  thuCats.forEach(cat=>{
+    if(chiCats.includes(cat)) return; // offset category → hiện ở CHI
+    rows+=`<tr>
+      <td class="rpy-label" style="padding-left:22px;font-weight:600;background:#f9fff9;color:#1a1a1a">${cat}</td>
+      ${months.map(m=>{ const v=data[m].thu[cat]||0; return `<td style="text-align:right;padding:5px 8px;color:${thuColor(v)}">${v?n(Math.abs(v)):''}</td>`; }).join('')}
+    </tr>`;
+  });
+
+  // CHI header
+  rows+=`<tr style="background:#9b2c2c;color:#fff;font-weight:700">
+    <td class="rpy-label" style="background:#9b2c2c;color:#fff;font-weight:700;font-size:13px">CHI</td>
+    ${months.map(m=>`<td style="text-align:right;padding:5px 8px;font-weight:700">${totalChi(m)?n(totalChi(m)):''}</td>`).join('')}
+  </tr>`;
+
+  // CHI categories
+  chiCats.forEach(cat=>{
+    rows+=`<tr>
+      <td class="rpy-label" style="padding-left:22px;font-weight:600;background:#fff9f9;color:#1a1a1a">${cat}</td>
+      ${months.map(m=>{ const v=data[m].chi[cat]||0; return `<td style="text-align:right;padding:5px 8px;color:${chiColor(v)}">${v?n(Math.abs(v)):''}</td>`; }).join('')}
+    </tr>`;
+  });
+
+  // Số dư cuối kỳ
+  rows+=`<tr style="background:#e8f4fd;font-weight:700">
+    <td class="rpy-label" style="background:#e8f4fd;font-weight:700;color:#1a365d">Số dư cuối kỳ</td>
+    ${months.map(m=>`<td style="text-align:right;padding:5px 8px;font-weight:700;color:#1a365d">${data[m].closing?n(data[m].closing):''}</td>`).join('')}
+  </tr>`;
+
+  // Separator
+  rows+=`<tr style="background:#f0f0f0"><td colspan="13" style="padding:3px 0;border-top:2px solid #ddd"></td></tr>`;
+
+  // Asset breakdown rows
+  const assetRows=[
+    {label:'Tiền mặt', vals: m=>data[m].cash},
+    {label:'Tiền Ngân hàng', vals: m=>data[m].bank},
+    {label:'Tiền gửi', vals: m=>data[m].tg},
+  ];
+  assetRows.forEach(({label,vals})=>{
+    rows+=`<tr style="background:#f0f7ff">
+      <td class="rpy-label" style="background:#f0f7ff;font-weight:600;color:#2b6cb0">${label}</td>
+      ${months.map(m=>{ const v=vals(m); return `<td style="text-align:right;padding:5px 8px;color:#2b6cb0">${v?n(v):''}</td>`; }).join('')}
+    </tr>`;
+  });
+
+  // Tổng tài sản
+  rows+=`<tr style="background:#dbeafe;font-weight:700;border-top:2px solid #93c5fd">
+    <td class="rpy-label" style="background:#dbeafe;font-weight:700;color:#1e3a8a">Tổng tài sản</td>
+    ${months.map(m=>{ const v=data[m].cash+data[m].bank+data[m].tg; return `<td style="text-align:right;padding:5px 8px;font-weight:700;color:#1e3a8a">${v?n(v):''}</td>`; }).join('')}
+  </tr>`;
+
+
+  wrap.innerHTML=`
+    <div style="font-weight:700;font-size:15px;color:#1a1a1a;margin-bottom:14px">Báo cáo tổng hợp năm ${Y}</div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr>
+        <th style="text-align:left;position:sticky;left:0;z-index:2;background:#1F5C3A;color:#fff;padding:8px 14px;min-width:180px;font-size:13px">Chỉ tiêu</th>
+        ${thCols}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>`;
+}
+
 function renderRptGopVon(){
   const wrap=document.getElementById('rpt-gv-wrap'); if(!wrap) return;
   const all=[];
